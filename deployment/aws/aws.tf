@@ -15,25 +15,28 @@
  */
 
 provider "aws" {
- access_key = "${var.aws_access_key}"
- secret_key = "${var.aws_secret_key}"
- region = "${var.aws_region}"
+  access_key = "${var.aws_access_key}"
+  secret_key = "${var.aws_secret_key}"
+  region     = "${var.aws_region}"
 }
 
 resource "aws_security_group" "pravega_default" {
- name = "pravega_default"
- ingress {
-  from_port = 0
-  to_port = 0
-  protocol = "-1"
-  cidr_blocks = ["0.0.0.0/0"]
- }
- egress {
-  from_port = 0
-  to_port = 0
-  protocol = "-1"
-  cidr_blocks = ["0.0.0.0/0"]
- }
+  name = "pravega_default"
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    yor_trace = "ccf3a06b-2c04-4be8-a0ea-d42cb933b319"
+  }
 }
 
 # IAM Role setups
@@ -59,6 +62,9 @@ resource "aws_iam_role" "iam_emr_service_role" {
   ]
 }
 EOF
+  tags = {
+    yor_trace = "af5fa595-bf79-40ba-b1c6-c4f2c94e3ab5"
+  }
 }
 
 resource "aws_iam_role_policy" "iam_emr_service_policy" {
@@ -150,11 +156,17 @@ resource "aws_iam_role" "iam_emr_profile_role" {
   ]
 }
 EOF
+  tags = {
+    yor_trace = "9d19e0aa-25cc-4e93-a6ec-161b011c9039"
+  }
 }
 
 resource "aws_iam_instance_profile" "emr_profile" {
-  name  = "emr_profile_pravega"
+  name = "emr_profile_pravega"
   role = "${aws_iam_role.iam_emr_profile_role.name}"
+  tags = {
+    yor_trace = "9e42a9f2-d65a-40d0-b34a-fec63fb65cbe"
+  }
 }
 
 resource "aws_iam_role_policy" "iam_emr_profile_policy" {
@@ -195,76 +207,82 @@ resource "aws_iam_role_policy" "iam_emr_profile_policy" {
 }
 EOF
 }
- 
+
 resource "aws_emr_cluster" "pravega-emr-cluster" {
-  name = "pravega-emr-cluster"
+  name          = "pravega-emr-cluster"
   release_label = "emr-5.5.0"
-  applications = ["Hadoop"]
+  applications  = ["Hadoop"]
 
   ec2_attributes {
-    key_name = "${var.aws_key_name}"
+    key_name                          = "${var.aws_key_name}"
     emr_managed_master_security_group = "${aws_security_group.pravega_default.id}"
-    emr_managed_slave_security_group = "${aws_security_group.pravega_default.id}"
-    instance_profile = "${aws_iam_instance_profile.emr_profile.arn}"
+    emr_managed_slave_security_group  = "${aws_security_group.pravega_default.id}"
+    instance_profile                  = "${aws_iam_instance_profile.emr_profile.arn}"
   }
 
   master_instance_type = "m3.xlarge"
-  core_instance_type = "m3.xlarge"
-  core_instance_count = "${var.hadoop_instance_count}"
-  service_role = "${aws_iam_role.iam_emr_service_role.arn}"
+  core_instance_type   = "m3.xlarge"
+  core_instance_count  = "${var.hadoop_instance_count}"
+  service_role         = "${aws_iam_role.iam_emr_service_role.arn}"
+  tags = {
+    yor_trace = "948c3e44-2519-4162-9e75-34044c8cf855"
+  }
 }
 
 resource "aws_instance" "pravega" {
- depends_on = ["aws_security_group.pravega_default"]
- count = "${var.pravega_num}"
- ami = "${lookup(var.pravega_aws_amis, var.aws_region)}"
- instance_type = "${lookup(var.pravega_instance_type, var.aws_region)}"
- key_name = "${var.aws_key_name}"
- security_groups = ["pravega_default"]
- provisioner "local-exec" {
-   command = "chmod 400 ${var.cred_path}"
- }
- provisioner "remote-exec" {
-   connection = {
-      type = "ssh"
-      user = "ubuntu"
+  depends_on      = ["aws_security_group.pravega_default"]
+  count           = "${var.pravega_num}"
+  ami             = "${lookup(var.pravega_aws_amis, var.aws_region)}"
+  instance_type   = "${lookup(var.pravega_instance_type, var.aws_region)}"
+  key_name        = "${var.aws_key_name}"
+  security_groups = ["pravega_default"]
+  provisioner "local-exec" {
+    command = "chmod 400 ${var.cred_path}"
+  }
+  provisioner "remote-exec" {
+    connection = {
+      type        = "ssh"
+      user        = "ubuntu"
       private_key = "${file("${var.cred_path}")}"
-   }
-   inline = [
-      "wget -c http://www.apache.org/dist/zookeeper/zookeeper-3.5.1-alpha/zookeeper-3.5.1-alpha.tar.gz && sudo cp zookeeper-3.5.1-alpha.tar.gz /zookeeper-3.5.1-alpha.tar.gz", 
+    }
+    inline = [
+      "wget -c http://www.apache.org/dist/zookeeper/zookeeper-3.5.1-alpha/zookeeper-3.5.1-alpha.tar.gz && sudo cp zookeeper-3.5.1-alpha.tar.gz /zookeeper-3.5.1-alpha.tar.gz",
       "wget -c http://www.apache.org/dist/hadoop/core/hadoop-2.7.3/hadoop-2.7.3.tar.gz && sudo cp hadoop-2.7.3.tar.gz /hadoop-2.7.3.tar.gz",
       "wget -c http://www.apache.org/dist/bookkeeper/bookkeeper-4.4.0/bookkeeper-server-4.4.0-bin.tar.gz && sudo cp bookkeeper-server-4.4.0-bin.tar.gz /bookkeeper-server-4.4.0-bin.tar.gz",
       "sudo apt-get install -y python",
       "sudo cp /home/ubuntu/.ssh/authorized_keys /root/.ssh/",
-   ]
- } 
+    ]
+  }
+  tags = {
+    yor_trace = "8abfa46d-7219-4464-9d49-397d6e6e7a08"
+  }
 }
 
 resource "aws_instance" "boot" {
- ami = "${lookup(var.pravega_aws_amis, var.aws_region)}"
- instance_type = "m3.medium"
- key_name = "${var.aws_key_name}"
- security_groups = ["pravega_default"]
- depends_on = ["aws_instance.pravega"]
- provisioner "local-exec" {
-   command = "cp ${var.cred_path} installer && chmod +x bootstrap.sh && ./bootstrap.sh '${join(",", aws_instance.pravega.*.public_ip)}' ${aws_emr_cluster.pravega-emr-cluster.master_public_dns} ${var.aws_region} "
- }
- provisioner "file" {
-   connection = {
-      type = "ssh"
-      user = "ubuntu"
+  ami             = "${lookup(var.pravega_aws_amis, var.aws_region)}"
+  instance_type   = "m3.medium"
+  key_name        = "${var.aws_key_name}"
+  security_groups = ["pravega_default"]
+  depends_on      = ["aws_instance.pravega"]
+  provisioner "local-exec" {
+    command = "cp ${var.cred_path} installer && chmod +x bootstrap.sh && ./bootstrap.sh '${join(",", aws_instance.pravega.*.public_ip)}' ${aws_emr_cluster.pravega-emr-cluster.master_public_dns} ${var.aws_region} "
+  }
+  provisioner "file" {
+    connection = {
+      type        = "ssh"
+      user        = "ubuntu"
       private_key = "${file("${var.cred_path}")}"
-   }
-   source = "installer/"
-   destination = "/home/ubuntu"
- }
- provisioner "remote-exec" {
-   connection = {
-      type = "ssh"
-      user = "ubuntu"
+    }
+    source      = "installer/"
+    destination = "/home/ubuntu"
+  }
+  provisioner "remote-exec" {
+    connection = {
+      type        = "ssh"
+      user        = "ubuntu"
       private_key = "${file("${var.cred_path}")}"
-   }
-   inline = [
+    }
+    inline = [
       "sudo apt-add-repository ppa:ansible/ansible -y",
       "sudo apt-get -y update",
       "sudo apt-get install -y software-properties-common",
@@ -276,6 +294,9 @@ resource "aws_instance" "boot" {
       "cd /home/ubuntu",
       "chmod 400 $(basename ${var.cred_path})",
       "ansible-playbook -i hosts entry_point.yml --private-key=$(basename ${var.cred_path})",
-   ]
+    ]
+  }
+  tags = {
+    yor_trace = "9a0a6088-d5f9-4267-a300-0d3b371c8736"
   }
 }
